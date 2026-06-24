@@ -14,7 +14,11 @@ const PORT = process.env.PORT || 3000;
  * 3. Asigna la colección 'equipos' a req.collection usando req.db.collection().
  * 4. Llama a next().
  */
-// Tu código aquí
+app.use((req, res, next) => {
+    req.db = client.db('MundialDB');
+    req.collection = req.db.collection('equipos');
+    next();
+});
 
 /**
  * TODO: Implementar un endpoint GET /equipos
@@ -23,44 +27,95 @@ const PORT = process.env.PORT || 3000;
  * 3. Debe retornar el arreglo con status 200.
  */
 app.get('/equipos', async (req, res) => {
-    // Tu código aquí
+    try {
+        const equipos = await req.collection.find().toArray();
+        res.status(200).json(equipos);
+    } catch (error) {
+        res.status(500).json({ error: "Error al obtener los equipos" });
+    }
 });
 
 /**
  * TODO: Implementar un endpoint GET /equipos/buscar
  * 1. Debe obtener el parámetro de consulta 'tecnico' (req.query.tecnico).
  * 2. Debe usar expresiones regulares u operadores de MongoDB para buscar aquellos
- *    equipos cuyo 'tecnico' contenga el nombre buscado (insensible a mayúsculas: $regex / $options: 'i').
+ * equipos cuyo 'tecnico' contenga el nombre buscado (insensible a mayúsculas: $regex / $options: 'i').
  * 3. Debe retornar el arreglo filtrado con status 200.
  * IMPORTANTE: ¡Esta ruta debe ir ANTES que la ruta GET /equipos/:id!
  */
 app.get('/equipos/buscar', async (req, res) => {
-    // Tu código aquí
+    try {
+        const { tecnico } = req.query;
+        if (!tecnico) {
+            return res.status(400).json({ error: "Debe proveer un parámetro de búsqueda 'tecnico'" });
+        }
+        
+        const equipos = await req.collection.find({
+            tecnico: { $regex: tecnico, $options: 'i' }
+        }).toArray();
+        
+        res.status(200).json(equipos);
+    } catch (error) {
+        res.status(500).json({ error: "Error al buscar equipos" });
+    }
 });
 
 /**
  * TODO: Implementar un endpoint GET /equipos/:id
  * 1. Debe obtener el id de los parámetros de la URL.
  * 2. Validar que el id sea un ObjectId válido usando ObjectId.isValid().
- *    Si no lo es, responde con status 400 y el mensaje { error: "ID inválido" }.
+ * Si no lo es, responde con status 400 y el mensaje { error: "ID inválido" }.
  * 3. Si es válido, conviértelo a ObjectId y busca ese documento en la colección.
  * 4. Si lo encuentra, retornarlo con status 200.
  * 5. Si no lo encuentra, retornar un status 404 y { error: "Equipo no encontrado" }.
  */
 app.get('/equipos/:id', async (req, res) => {
-    // Tu código aquí
+    const { id } = req.params;
+    
+    if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "ID inválido" });
+    }
+
+    try {
+        const equipo = await req.collection.findOne({ _id: new ObjectId(id) });
+        if (!equipo) {
+            return res.status(404).json({ error: "Equipo no encontrado" });
+        }
+        res.status(200).json(equipo);
+    } catch (error) {
+        res.status(500).json({ error: "Error al obtener el equipo" });
+    }
 });
 
 /**
  * TODO: Implementar un endpoint POST /equipos
  * 1. Debe extraer equipo, tecnico, continente y campeonatos_mundiales del req.body.
  * 2. Debe validar que todos los campos existan y sean del tipo correcto.
- *    Si algún campo falla, retornar status 400.
+ * Si algún campo falla, retornar status 400.
  * 3. Debe utilizar insertOne para crear el documento en la base de datos.
  * 4. Debe retornar el nuevo equipo con su _id generado y status 201.
  */
 app.post('/equipos', async (req, res) => {
-    // Tu código aquí
+    const { equipo, tecnico, continente, campeonatos_mundiales } = req.body;
+
+    // Validación de existencia y tipos de datos
+    if (
+        typeof equipo !== 'string' || 
+        typeof tecnico !== 'string' || 
+        typeof continente !== 'string' || 
+        typeof campeonatos_mundiales !== 'number'
+    ) {
+        return res.status(400).json({ error: "Faltan campos o los tipos de datos son incorrectos" });
+    }
+
+    try {
+        const nuevoEquipo = { equipo, tecnico, continente, campeonatos_mundiales };
+        const result = await req.collection.insertOne(nuevoEquipo);
+        
+        res.status(201).json({ ...nuevoEquipo, _id: result.insertedId });
+    } catch (error) {
+        res.status(500).json({ error: "Error al crear el equipo" });
+    }
 });
 
 /**
@@ -72,7 +127,38 @@ app.post('/equipos', async (req, res) => {
  * 5. Si fue exitoso, retorna status 200.
  */
 app.put('/equipos/:id', async (req, res) => {
-    // Tu código aquí
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "ID inválido" });
+    }
+
+    const { equipo, tecnico, continente, campeonatos_mundiales } = req.body;
+
+    // Validación de existencia y tipos de datos
+    if (
+        typeof equipo !== 'string' || 
+        typeof tecnico !== 'string' || 
+        typeof continente !== 'string' || 
+        typeof campeonatos_mundiales !== 'number'
+    ) {
+        return res.status(400).json({ error: "Faltan campos o los tipos de datos son incorrectos" });
+    }
+
+    try {
+        const result = await req.collection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { equipo, tecnico, continente, campeonatos_mundiales } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ error: "Equipo no encontrado" });
+        }
+
+        res.status(200).json({ message: "Equipo actualizado correctamente" });
+    } catch (error) {
+        res.status(500).json({ error: "Error al actualizar el equipo" });
+    }
 });
 
 /**
@@ -83,7 +169,23 @@ app.put('/equipos/:id', async (req, res) => {
  * 4. Si se eliminó correctamente, retorna status 200.
  */
 app.delete('/equipos/:id', async (req, res) => {
-    // Tu código aquí
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "ID inválido" });
+    }
+
+    try {
+        const result = await req.collection.deleteOne({ _id: new ObjectId(id) });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ error: "Equipo no encontrado" });
+        }
+
+        res.status(200).json({ message: "Equipo eliminado correctamente" });
+    } catch (error) {
+        res.status(500).json({ error: "Error al eliminar el equipo" });
+    }
 });
 
 // Iniciar el servidor solo si este archivo se ejecuta directamente
